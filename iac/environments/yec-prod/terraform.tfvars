@@ -13,10 +13,13 @@ public_subnet_cidrs  = ["172.27.1.0/24", "172.27.2.0/24", "172.27.3.0/24"]
 private_subnet_cidrs = ["172.27.4.0/24", "172.27.5.0/24", "172.27.6.0/24"]
 db_subnet_cidrs      = ["172.27.7.0/24", "172.27.8.0/24", "172.27.9.0/24"]
 
-be_image = "REPLACE_WITH_BE_IMAGE_URI:tag"
-fe_image = "REPLACE_WITH_FE_IMAGE_URI:tag"
+be_image = "470656906159.dkr.ecr.ap-southeast-1.amazonaws.com/zyl-elevator-prod-be:latest"
+fe_image = "470656906159.dkr.ecr.ap-southeast-1.amazonaws.com/zyl-elevator-prod-fe:latest"
 be_port  = 3001
 fe_port  = 3000
+
+enable_https       = false    # ALB listens on HTTP:80 only
+cloudfront_enabled = false    # Skip CloudFront if you add this toggle
 
 alb_certificate_arn        = "REPLACE_ap-southeast-1_ACM_ARN"
 cloudfront_certificate_arn = "REPLACE_us-east-1_ACM_ARN"

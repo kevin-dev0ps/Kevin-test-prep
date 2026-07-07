@@ -22,14 +22,14 @@ module "vpc" {
   tags                 = local.tags
 }
 
-module "ecr" {
-  source      = "../../modules/ecr"
-  project     = var.project
-  environment = var.environment
-  region      = var.region
-  components  = local.components
-  tags        = local.tags
-}
+#module "ecr" {
+#  source      = "../../modules/ecr"
+#  project     = var.project
+#  environment = var.environment
+#  region      = var.region
+#  components  = local.components
+#  tags        = local.tags
+#}
 
 module "cloudwatch" {
   source      = "../../modules/cloudwatch"
@@ -145,13 +145,13 @@ module "waf" {
   tags              = local.tags
 }
 
-module "cloudfront" {
-  source              = "../../modules/cloudfront"
-  project             = var.project
-  environment         = var.environment
-  aliases             = var.cloudfront_aliases
-  origin_domain_name  = module.alb.external_dns_name
-  acm_certificate_arn = var.cloudfront_certificate_arn
-  web_acl_arn         = module.waf.web_acl_arn
-  tags                = local.tags
-}
+#module "cloudfront" {
+#  source              = "../../modules/cloudfront"
+#  project             = var.project
+#  environment         = var.environment
+#  aliases             = var.cloudfront_aliases
+#  origin_domain_name  = module.alb.external_dns_name
+#  acm_certificate_arn = var.cloudfront_certificate_arn
+#  web_acl_arn         = module.waf.web_acl_arn
+#  tags                = local.tags
+#}
