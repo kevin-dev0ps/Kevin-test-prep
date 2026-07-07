@@ -1,0 +1,3 @@
+# DEPRECATED FOLDER — superseded. Use:
+#   environments/prod       -> existing source (zyl-elevator-prod)
+#   environments/yecl-prod  -> new clone       (yecl-elevator-prod)

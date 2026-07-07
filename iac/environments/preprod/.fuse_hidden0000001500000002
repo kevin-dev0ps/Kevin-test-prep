@@ -1,0 +1,120 @@
+# Environment: preprod  (project=zyl-elevator, environment=preprod)
+locals {
+  tags = {
+    Project     = var.project
+    Environment = var.environment
+    "Sub-Tag"   = var.sub_tag
+  }
+}
+
+# ---- shared infrastructure ----
+module "vpc" {
+  source      = "../../modules/vpc"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "alb" {
+  source      = "../../modules/alb"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "rds" {
+  source      = "../../modules/rds"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "redis" {
+  source      = "../../modules/redis"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "cloudfront" {
+  source      = "../../modules/cloudfront"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "ecr" {
+  source      = "../../modules/ecr"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "waf" {
+  source      = "../../modules/waf"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "iam" {
+  source      = "../../modules/iam"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "cloudwatch" {
+  source      = "../../modules/cloudwatch"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "route53" {
+  source      = "../../modules/route53"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+module "ecs" {
+  source      = "../../modules/ecs"
+  project     = var.project
+  environment = var.environment
+  region      = var.region
+  tags        = local.tags
+}
+
+# ---- application services (one per GitHub repo) ----
+module "ecs_be" {
+  source      = "../../modules/ecs-service"
+  project     = var.project
+  environment = var.environment
+  component   = "be"
+  region      = var.region
+  image       = var.be_image
+  cluster_arn = module.ecs.cluster_arn
+  tags        = local.tags
+}
+
+module "ecs_fe" {
+  source      = "../../modules/ecs-service"
+  project     = var.project
+  environment = var.environment
+  component   = "fe"
+  region      = var.region
+  image       = var.fe_image
+  cluster_arn = module.ecs.cluster_arn
+  tags        = local.tags
+}

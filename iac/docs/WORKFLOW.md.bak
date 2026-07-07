@@ -1,0 +1,114 @@
+# Infra modernization — workflow
+
+Turn the existing manually-built `zyl-elevator-prod` environment into reusable
+Terraform, without changing any live infrastructure, so future environments
+(dev, preprod, prod, other projects) deploy by changing variables only.
+
+## Directory layout
+
+```
+iac/
+  inventory/                 Phase 1 — read-only AWS inventory (source of truth)
+  generated/terraformer/     Phase 2 — pristine Terraformer export (never edit)
+  terraform/                 scratch space for refactoring before it lands in modules/
+  modules/                   Phase 4 — reusable, environment-agnostic modules
+    vpc/ ecs/ alb/ rds/ redis/ cloudfront/ ecr/ waf/ iam/ cloudwatch/ route53/
+  environments/              Phase 6 — one folder per environment (values only)
+    dev/ preprod/ prod/        main.tf providers.tf backend.tf variables.tf terraform.tfvars
+  reports/                   analysis.md (Phase 3), validation.md (Phase 5)
+  docs/                      this file
+  scripts/                   collect_inventory.sh, export_terraform.sh
+```
+
+## Golden rules
+
+1. **Inventory is the source of truth.** Collect AWS metadata first (Phase 1),
+   then export Terraform, then validate the export against the inventory.
+2. **Never edit `generated/terraformer/`.** All improvements go in `terraform/`
+   and `modules/`, so you can always diff against the original.
+3. **Modules describe *what*; environments describe *where + with what values*.**
+   No environment-specific values inside a module.
+4. **Names come from variables:** `${var.project}-${var.environment}-<resource>`.
+5. **Validate before deploying.** `terraform plan` against prod must show **no
+   changes** before the code is trusted or reused. Never `apply`/`destroy`
+   during modernization.
+
+## Naming convention
+
+Two layers. Shared infrastructure uses:
+
+`<project>-<environment>-<resource>`
+
+Application services (deployed from the two GitHub repos) add a **component**
+segment (`be` = backend repo, `fe` = frontend repo):
+
+`<project>-<environment>-<component>-<resource>`
+
+### Source vs clone
+
+One AWS account, two code repos on one shared infra. There are two *stacks*:
+
+| Stack folder | project         | environment | produces names            | purpose |
+|--------------|-----------------|-------------|---------------------------|---------|
+| `environments/prod`      | `zyl-elevator`  | `prod` | `zyl-elevator-prod-*`, `-be-*`, `-fe-*` | **EXISTING** — the source. Import + `plan` = no changes. Never apply. |
+| `environments/yecl-prod` | `yecl-elevator` | `prod` | `yecl-elevator-prod-*`, `-be-*`, `-fe-*` | **NEW clone** — `apply` creates fresh infra (the mirror). |
+| `environments/dev`       | `zyl-elevator`  | `dev`  | `zyl-elevator-dev-*`      | dev environment |
+| `environments/preprod`   | `zyl-elevator`  | `preprod` | `zyl-elevator-preprod-*` | pre-production |
+
+Only `terraform.tfvars` differs between stacks — the modules are identical.
+
+The existing `prod` values are chosen so generated names **equal the live ones**,
+which is what makes the Phase-5 "no changes" plan possible. Standing up
+`yecl-prod` is the one and only step that *creates* AWS resources; it is done
+deliberately, later, after validation — never during modernization.
+
+### Tags
+
+Every resource carries: `Project`, `Environment`, `Sub-Tag` (= "Yoma Elevator"),
+`ManagedBy=terraform`, and (for services) `Component` = `be`|`fe`. Set via
+provider `default_tags` + module tag locals.
+
+### ECS images
+
+Terraform manages the container image (per project decision): each service takes
+a `be_image` / `fe_image` variable. For the existing `prod` stack, set these to
+the **currently running** image tags so the plan stays clean; your GitHub CI and
+Terraform must agree on the tag or they will churn each other.
+
+## Phases
+
+### Phase 1 — Inventory  (done)
+`./scripts/collect_inventory.sh` → `inventory/`. Read-only. See top-level README.
+
+### Phase 2 — Export
+`AWS_PROFILE=KEVIN-ZYL ./scripts/export_terraform.sh` → `generated/terraformer/`.
+Export only; requires `terraform` + `terraformer` installed. Scopes to the
+project's VPC / Project tag. Do not edit the output.
+
+### Phase 3 — Analyze → `reports/analysis.md`
+Compare export vs `inventory/manifest.json`:
+- resource relationships & dependencies (VPC → subnets → SG → ECS/ALB/RDS)
+- missing / extra / unsupported resources
+- hardcoded values and duplicates to variabilize
+- things Terraformer under-captures: S3 bucket policy/encryption, WAF
+  associations, ECS autoscaling, CloudFront↔ACM (us-east-1). Use a `DEEP=1`
+  inventory pass as the reference to fill these.
+
+### Phase 4 — Standardize
+Move refactored resources into `modules/<x>/`. Replace every literal
+`zyl-elevator-prod` with `${local.name_prefix}`. Keep values out of modules.
+
+### Phase 5 — Validate → `reports/validation.md`
+In `environments/prod/`: `terraform init` then `terraform plan`. Success = **0 to
+add, 0 to change, 0 to destroy** against the live prod account. (Resources are
+imported into state first; no apply.)
+
+### Phase 6 — New environments
+`cd environments/dev && terraform init && terraform plan`. Because only
+`terraform.tfvars` differs, the same modules build `zyl-elevator-dev-*`.
+
+## State backend
+
+Each environment uses an S3 backend + DynamoDB lock (`backend.tf`). Create the
+state bucket and lock table once per account **before** `terraform init`. Keeping
+state remote (not on a laptop) is required for safe team use.

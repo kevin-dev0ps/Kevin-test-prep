@@ -1,0 +1,189 @@
+# Phase 3 — Infrastructure Analysis
+
+Generated: 2026-07-07 · Region: ap-southeast-1 · Account: 470656906159
+Sources: `inventory/` (read-only AWS inventory) + `generated/terraformer/` (pristine export).
+
+## 1. Executive summary
+
+The Terraformer export succeeded after isolating the regional pass. It captured
+the `zyl-elevator-prod` environment **plus a large amount of unrelated account
+content**, because the account is shared. The single most important structural
+fact for the clone:
+
+> **`zyl-elevator-prod` does not own its own network.** It shares one VPC
+> (`vpc-0f5df5e14aba315ff`, `ZYL-Prod-VPC`, 172.25.0.0/16) *and* the external ALB
+> with a second project, `starcity-scla-dev`. The VPC was created by
+> CloudFormation (stack `ZeyalabsInfraSetUp`), and network resources are named
+> `ZYL-Prod-*`, while the application layer is named `zyl-elevator-prod-*`.
+
+This is fully cloneable, but the clone must **carve out the elevator's slice**
+rather than copy the VPC wholesale. Details below.
+
+## 2. Coverage: inventory vs export
+
+| Domain | Inventory (manifest) | Export (elevator-only) | Notes |
+|---|---|---|---|
+| VPC | 1 | 1 (of 2 in account) | `vpc-0f5df5e14aba315ff` 172.25.0.0/16 |
+| Subnets | 15 | ~9 elevator (of 18) | 172.25.1–9.x = elevator; 172.25.10–11.x = starcity |
+| Security groups | 5 | 6 elevator (of 10) | alb-external, alb-internal, be-task, fe-task, rds, **zyl-bastion-host** |
+| ALB | 2 | 2 | `-alb-external` (public), `-alb-internal` |
+| Target groups | 4 | 2 elevator (of 4) | `be-tg`, `fe-tg` (+ 2 starcity) |
+| ECS clusters | 1 | 1 (of 2) | `zyl-elevator-prod-ecs` |
+| ECS services | 2 | 2 | `be`, `fe` (Fargate, desired_count=1) |
+| Task defs | 2 | 2 families | `be` (1024/2048), `fe` |
+| RDS instances | 1 | 1 (+ Aurora leftover) | `zyl-elevator-prod-rds` postgres 15.17 |
+| ElastiCache/Redis | 0 | 0 | **not used** (confirm) |
+| S3 | 1 | 1 elevator (of 6) | `zyl-elevator-prod-uploads` |
+| ECR | 2 | 2 (of 4) | `zyl-elevator-prod-be`, `-fe` |
+| CloudFront | 3–4 | 1 elevator (of 4) | `yomaelevator.com` "YEC Elevator App" |
+| IAM roles | 4 | 4 (of ~40) | be-task, fe-task, ecs-task-execution, github-actions |
+| ACM | (global) | 1 of ≥2 | ap-southeast-1 (ALB); **us-east-1 cert NOT captured** |
+| KMS | (present) | 1 key + ebs alias | account-level EBS CMK, not elevator-specific |
+| WAF | present | **0 — not exportable** | `zyl-elevator-prod-waf` (wafv2, us-east-1) |
+| Secrets Manager | 0 matched | — | app DOES use it (see §5) |
+
+Reconciliation is clean: inventory and export agree on the elevator resource
+set. Export differences are all *extra* account content, not *missing* elevator
+resources.
+
+## 3. The elevator resource set (what the clone contains)
+
+Grouped by target module. These are the resources to reproduce as
+`${project}-${environment}-*` (source `zyl-elevator-prod`, clone `yecl-elevator-prod`).
+
+**vpc / network** — VPC 172.25.0.0/16; elevator subnets: Public 1a/1b/1c
+(172.25.1–3.0/24), Private 1a/1b/1c (172.25.4–6.0/24), DB 1a/1b/1c
+(172.25.7–9.0/24); 1 IGW, 1 NAT gateway, route tables, EIP(s). *(Exclude the
+172.25.10–11.x starcity subnets.)*
+
+**alb** — `alb-external` (public: HTTPS:443 w/ ACM `yomaelevator.com`, HTTP:80,
+HTTP:8000; listener rules), `alb-internal` (HTTP:80). Target groups `be-tg`,
+`fe-tg`.
+
+**ecs (cluster)** — `zyl-elevator-prod-ecs`, container insights on.
+
+**ecs-service ×2** — `be` (Fargate, cpu 1024 / mem 2048, awsvpc, desired 1),
+`fe`. Attach to `be-tg`/`fe-tg`; SGs `be-task`/`fe-task`.
+
+**rds** — `zyl-elevator-prod-rds`: postgres 15.17, db.t3.small, 20 GB, single-AZ,
+backup 7d, deletion_protection on, db_name `yecl_maintenance`, subnet group +
+parameter group. *(An Aurora cluster `zyl-elevator-prod-aurora` was deleted — only
+a final snapshot + its log group remain. Current DB is the single instance.)*
+
+**ecr ×2** — `zyl-elevator-prod-be`, `-fe` (+ lifecycle policies).
+
+**iam** — roles `be-task`, `fe-task`, `ecs-task-execution` (has
+`SecretsManagerReadWrite` + an SSM policy), `github-actions` (OIDC deploy).
+
+**cloudfront + waf** — 1 distribution (`yomaelevator.com`) → origin
+`alb-external`; CloudFront function `zyl-elevator-prod-host-check`; WAFv2 WebACL
+`zyl-elevator-prod-waf` (us-east-1, CLOUDFRONT scope).
+
+**cloudwatch/logs** — `/ecs/zyl-elevator-prod/be`, `/fe`, container-insights
+performance log group.
+
+**kms** — the account EBS-default CMK is shared/global; treat as a data source,
+not an elevator-owned resource.
+
+## 4. Shared-account noise to EXCLUDE from the clone
+
+Terraformer (`FILTER=none`) pulled the whole account. Do **not** carry these into
+modules — they belong to other projects/users or are runtime/backup artifacts:
+
+- **starcity-scla-dev**: ECS cluster/services/task-defs, ALB target groups
+  (`admin-portal`, `be-tg`), ECR repos, S3 buckets, subnets (172.25.10–11.x), SGs,
+  RDS instance `scla-dev-db-rds-cluster`, DB subnet group, CloudFront distros
+  (admin portal / backend / public assets).
+- **Account IAM**: all `aws_iam_user*`, groups (`Onenex-team`, `develop`,
+  `scla-db-admin`, `inactive-user-group`), `AWSServiceRoleFor*`, SSO roles,
+  `OrganizationAccountAccessRole`, `zeyalabs-ec2-profile`, access keys.
+- **RDS snapshots**: ~20 `aws_db_snapshot` / `aws_db_cluster_snapshot` (daily
+  automated backups + final snapshots). Never in IaC.
+- **Buckets**: `aws-cloudtrail-logs-*`, `cf-templates-*`, `zyl-terraform-state`
+  (see §5), starcity buckets.
+- **Default VPC** `vpc-0bff1f6f022d6abc9` (172.31.0.0/16) and its route tables.
+- **KMS ebs-encrypted-cmk / Lambda SetDefaultEBSKMSKey**: account guardrails.
+
+## 5. Critical findings (decisions these force)
+
+1. **Shared VPC + shared ALB.** Elevator and starcity live in one VPC and share
+   `alb-external` (starcity CloudFronts point at the elevator ALB DNS). For the
+   `yecl-elevator-prod` clone we build a *dedicated* VPC + ALB for elevator only —
+   cleaner than the current entanglement. This means the clone is a true
+   greenfield network, not a byte-copy of ZYL-Prod-VPC.
+
+2. **CloudFormation owns the network.** `ZYL-Prod-VPC` etc. come from stack
+   `ZeyalabsInfraSetUp`. A Terraform "no-change plan" against the *source* would
+   fight CloudFormation for ownership. Recommendation: treat the source as a
+   **read-only reference**; do NOT import prod network into Terraform state.
+   Validate the clone by `plan` on a fresh `yecl-elevator-prod` stack instead.
+
+3. **Mixed naming is real.** Network = `ZYL-Prod-*` (CFN, PascalCase); app =
+   `zyl-elevator-prod-*` (kebab). The clone standardizes everything to
+   `${project}-${environment}-*` (e.g. `yecl-elevator-prod-vpc`,
+   `yecl-elevator-prod-be`), so we drop the inconsistency going forward.
+
+4. **Secrets ARE used, just not prefix-named.** The `ecs-task-execution` role has
+   `SecretsManagerReadWrite` + an SSM policy; the DB name is `yecl_maintenance`.
+   So the apps read DB creds / config from Secrets Manager and/or SSM Parameter
+   Store — our prefix inventory returned 0 only because they're named generically.
+   The clone must provision its own secrets/parameters (values supplied out of
+   band, never in Terraform).
+
+5. **Redis/ElastiCache: none.** 0 in both inventory and export. Recommend
+   **dropping the `redis` module** from the clone unless you plan to add it.
+
+6. **`zyl-terraform-state` bucket already exists.** Someone already set up a TF
+   state bucket. Reuse it for the clone's backend (or create a `yecl-` one).
+
+7. **WAF + CloudFront cert need a us-east-1 pass.** The WebACL
+   `zyl-elevator-prod-waf` and the CloudFront ACM cert live in us-east-1;
+   Terraformer 0.8.30 can't export wafv2 at all. Both are rebuilt by hand in
+   Phase 4 from a `DEEP=1` inventory (run with `REGIONS="ap-southeast-1 us-east-1"`).
+
+## 6. Dependency map (elevator)
+
+```
+ACM(yomaelevator.com, apse1) ─┐
+                              ▼
+Route53(yomaelevator.com) → CloudFront("YEC Elevator App")
+   │  + WAFv2 zyl-elevator-prod-waf (us-east-1)
+   │  + CF function host-check
+   ▼
+alb-external (public, 443/80/8000) ── listener rules ──► fe-tg / be-tg
+   ▲                                                        ▲
+   │ SG alb-external                                        │
+VPC 172.25.0.0/16 ── public/private/db subnets ── IGW/NAT   │
+   │                                                        │
+   ├─ ECS cluster zyl-elevator-prod-ecs (Fargate)           │
+   │     ├─ service be (SG be-task) ──► be-tg ──────────────┘
+   │     └─ service fe (SG fe-task) ──► fe-tg
+   │           └─ task exec role → Secrets Manager / SSM, ECR(be/fe), logs
+   └─ RDS postgres zyl-elevator-prod-rds (SG rds, DB subnets, db_name yecl_maintenance)
+```
+
+## 7. What Terraformer under-captured (rebuild in Phase 4)
+
+- **wafv2 WebACL + association** — unsupported by terraformer; hand-build from DEEP inventory.
+- **CloudFront ACM cert (us-east-1)** + the us-east-1 side generally — needs a us-east-1 export/inventory pass.
+- **S3 hardening** — bucket policy captured, but encryption/versioning/public-access-block need the DEEP inventory (enum skipped per-bucket calls).
+- **ECS autoscaling** — no `aws_appautoscaling_target/policy` in the export; check DEEP inventory (`appautoscaling-*`).
+- **Secret/parameter values** — never exported (correct); provision empty and inject out of band.
+- **`aws_lb_target_group_attachment`** — these are runtime (Fargate IP registrations); do NOT reproduce, ECS manages them.
+- **Route53 records** — 0 exported (zone may be in another account / registrar); confirm where `yomaelevator.com` DNS lives.
+
+## 8. Recommended next step (Phase 4)
+
+Author clean modules from this analysis + a `DEEP=1` two-region inventory, rather
+than refactoring Terraformer's `tfer--` output (which is noisy and mixes two
+projects). Priority order: `vpc` → `alb` → `ecs`(cluster) → `ecs-service`(be/fe) →
+`rds` → `ecr` → `iam` → `cloudfront`+`waf` → `cloudwatch`. Drop `redis`.
+
+## 9. Open questions
+
+1. Redis/ElastiCache — confirm genuinely unused (safe to drop the module)?
+2. Where are the app's secrets/parameters stored (Secrets Manager names? SSM
+   paths?) so the clone can recreate the structure?
+3. Where does `yomaelevator.com` DNS live (Route53 in this account returned 0)?
+4. For the `yecl-elevator-prod` clone: dedicated new VPC (recommended) — confirm
+   CIDR (reuse 172.25.0.0/16 only if it won't peer/collide with the source)?

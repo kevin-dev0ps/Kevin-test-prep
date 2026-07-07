@@ -1,0 +1,36 @@
+# ---- Terraform ----
+# Provider plugins & module cache (this is the 648MB binary that broke the push)
+**/.terraform/
+**/.terraform.lock.hcl
+
+# State (never commit — contains secrets/attributes; use the S3 backend)
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Saved plans (may contain sensitive values)
+*.tfplan
+*.tfplan.*
+plan.out
+
+# Terraform variable files that may hold secrets — commit only sanitized ones
+*.auto.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ---- Terraformer pristine export (large + account-specific; regenerate on demand) ----
+iac/generated/
+
+# ---- Inventory dumps (account-specific: ARNs, IAM, secret/param metadata) ----
+iac/inventory/
+
+# ---- OS / editor / mount artifacts ----
+.DS_Store
+*.bak
+.fuse_hidden*
+*.swp
+.idea/
+.vscode/

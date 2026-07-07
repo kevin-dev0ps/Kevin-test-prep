@@ -1,0 +1,25 @@
+# Terraform provider plugins / module cache (the 648MB binary lives here)
+**/.terraform/
+**/.terraform.lock.hcl
+
+# State & plans — never commit
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+crash.log
+crash.*.log
+
+# Large / account-specific / sensitive — regenerate with the scripts instead
+generated/
+inventory/
+
+# secret-bearing var files
+*.auto.tfvars
+override.tf
+override.tf.json
+
+# junk
+.DS_Store
+*.bak
+.fuse_hidden*

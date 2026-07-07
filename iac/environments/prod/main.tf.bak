@@ -1,0 +1,8 @@
+# Environment: prod = the EXISTING zyl-elevator-prod (source of truth).
+#
+# DO NOT `terraform apply` here. The live prod network is owned by CloudFormation
+# (stack ZeyalabsInfraSetUp) and its resources already exist; applying these
+# modules would try to CREATE duplicates. This stack is a read-only reference.
+#
+# To stand up a NEW production-like stack, use environments/yecl-prod (project
+# yecl-elevator) which builds a dedicated, non-colliding environment.
