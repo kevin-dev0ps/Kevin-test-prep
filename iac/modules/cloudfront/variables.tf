@@ -3,6 +3,12 @@
 variable "project" { type = string }
 variable "environment" { type = string }
 
+variable "origin_protocol_policy" {
+  description = "How CloudFront connects to the ALB origin. Use http-only while the ALB has no HTTPS listener (testing); https-only once the ALB cert is added."
+  type        = string
+  default     = "https-only"
+}
+
 variable "aliases" {
   description = "CNAMEs, e.g. [\"yomaelevator.com\"] (source). Clone may use its own domain."
   type        = list(string)

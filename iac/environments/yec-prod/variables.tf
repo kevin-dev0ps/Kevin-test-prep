@@ -4,6 +4,12 @@ variable "environment" { type = string }
 variable "region" { type = string }
 variable "sub_tag" { type = string }
 
+variable "rds_snapshot_identifier" {
+  description = "Restore RDS from this snapshot (empty = fresh empty DB)"
+  type        = string
+  default     = ""
+}
+
 # Network (dedicated VPC for the clone — non-colliding with source 172.25.0.0/16)
 variable "vpc_cidr" { type = string }
 variable "azs" { type = list(string) }
@@ -24,6 +30,18 @@ variable "cloudfront_aliases" { type = list(string) }
 variable "waf_allowed_countries" { type = list(string) }
 
 # App secrets: name -> Secrets Manager/SSM ARN (values live outside Terraform)
+variable "enable_https" {
+  description = "Create HTTPS:443 listener on ALB (requires alb_certificate_arn)"
+  type        = bool
+  default     = false
+}
+
+variable "cloudfront_enabled" {
+  description = "Enable CloudFront distribution (deferred until DNS ready)"
+  type        = bool
+  default     = false
+}
+
 variable "be_secrets" {
   type    = map(string)
   default = {}

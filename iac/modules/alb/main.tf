@@ -154,6 +154,10 @@ resource "aws_lb_listener" "http" {
       }
     }
   }
+  # Routing (rules + default action) is managed in the AWS console.
+  lifecycle {
+    ignore_changes = [default_action]
+  }
 }
 
 resource "aws_lb_listener" "https" {
@@ -167,23 +171,16 @@ resource "aws_lb_listener" "https" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.fe.arn
   }
+  # Routing (rules + default action) is managed in the AWS console.
+  lifecycle {
+    ignore_changes = [default_action]
+  }
 }
 
-# Route /api/* to be, on whichever listener is the primary entrypoint.
-# NOTE (Phase 5): reconcile exact host/path rules against generated/terraformer/aws/alb.
-resource "aws_lb_listener_rule" "be_api" {
-  listener_arn = var.enable_https ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
-  priority     = 100
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.be.arn
-  }
-  condition {
-    path_pattern {
-      values = ["/api/*"]
-    }
-  }
-}
+# Listener rules (path routing + X-Origin-Verify enforcement + default 403) are
+# managed in the AWS console — same ownership model as WAF/CloudFront. Terraform
+# owns the ALB, target groups, and listener existence only; default_action is
+# ignore_changes'd above so console-set routing does not drift.
 
 # ---- Internal listener: 80 -> be ----
 resource "aws_lb_listener" "internal_http" {

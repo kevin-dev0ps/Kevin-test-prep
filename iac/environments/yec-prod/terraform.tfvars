@@ -1,9 +1,12 @@
 # NEW production clone. `terraform apply` here CREATES fresh infra (deliberate).
 aws_profile = "KEVIN-ZYL"
-project     = "yec-elevator"
+project     = "elevator-yec"
 environment = "prod"
 region      = "ap-southeast-1"
 sub_tag     = "Yoma Elevator"
+
+# Restore the DB from a live prod snapshot (inherits db_name yecl_maintenance, user zyl_admin)
+rds_snapshot_identifier = "rds:zyl-elevator-prod-rds-2026-07-01-02-11"
 # => yec-elevator-prod-*, yec-elevator-prod-be-*, yec-elevator-prod-fe-*
 
 # Dedicated VPC — 172.27.0.0/16 (separate from existing zyl-elevator 172.25.0.0/16).
@@ -14,7 +17,7 @@ private_subnet_cidrs = ["172.27.4.0/24", "172.27.5.0/24", "172.27.6.0/24"]
 db_subnet_cidrs      = ["172.27.7.0/24", "172.27.8.0/24", "172.27.9.0/24"]
 
 be_image = "470656906159.dkr.ecr.ap-southeast-1.amazonaws.com/zyl-elevator-prod-be:latest"
-fe_image = "470656906159.dkr.ecr.ap-southeast-1.amazonaws.com/zyl-elevator-prod-fe:latest"
+fe_image = "470656906159.dkr.ecr.ap-southeast-1.amazonaws.com/zyl-elevator-prod-fe:b7a81d7"
 be_port  = 3001
 fe_port  = 3000
 

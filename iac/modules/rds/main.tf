@@ -38,20 +38,31 @@ resource "aws_security_group_rule" "db_ingress" {
   description              = "Postgres from app task SG"
 }
 
+locals {
+  # When set, restore the DB from this snapshot instead of creating an empty one.
+  restoring = var.snapshot_identifier != ""
+}
+
 resource "aws_db_instance" "this" {
   identifier     = "${local.name_prefix}-rds"
   engine         = "postgres"
-  engine_version = var.engine_version
   instance_class = var.instance_class
 
-  allocated_storage = var.allocated_storage
+  # --- restore vs fresh create ---
+  # On restore, engine_version / storage / db_name / username come FROM the
+  # snapshot, so they must be left null here or AWS rejects the request.
+  snapshot_identifier = local.restoring ? var.snapshot_identifier : null
+  engine_version      = local.restoring ? null : var.engine_version
+  allocated_storage   = local.restoring ? null : var.allocated_storage
+  db_name             = local.restoring ? null : var.db_name
+  username            = local.restoring ? null : var.username
+
   storage_type      = var.storage_type
   storage_encrypted = true
   kms_key_id        = var.kms_key_id != "" ? var.kms_key_id : null
 
-  db_name  = var.db_name
-  username = var.username
-  # Password managed by RDS in Secrets Manager (no plaintext in TF).
+  # RDS manages the master password in Secrets Manager. On restore this RESETS
+  # the (inherited) master user's password to a new managed secret.
   manage_master_user_password = var.manage_master_user_password
 
   db_subnet_group_name   = aws_db_subnet_group.this.name
@@ -69,4 +80,9 @@ resource "aws_db_instance" "this" {
   final_snapshot_identifier = "${local.name_prefix}-rds-final"
 
   tags = merge(local.tags, { Name = "${local.name_prefix}-rds" })
+
+  # snapshot_identifier is create-only; ignore so later plans don't force replace.
+  lifecycle {
+    ignore_changes = [snapshot_identifier, engine_version]
+  }
 }

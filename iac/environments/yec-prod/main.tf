@@ -55,7 +55,7 @@ module "iam" {
   components         = local.components
   attach_uploads_policy = true
   uploads_bucket_arn = module.s3_uploads.bucket_arn
-  secret_arns        = concat(values(var.be_secrets), values(var.fe_secrets))
+  secret_arns        = local.app_secret_arns
   tags               = local.tags
 }
 
@@ -68,10 +68,11 @@ module "alb" {
   vpc_cidr           = module.vpc.vpc_cidr
   public_subnet_ids  = module.vpc.public_subnet_ids
   private_subnet_ids = module.vpc.private_subnet_ids
-  certificate_arn    = var.alb_certificate_arn
-  be_port            = var.be_port
-  fe_port            = var.fe_port
-  tags               = local.tags
+  enable_https         = var.enable_https
+  certificate_arn      = var.alb_certificate_arn
+  be_port              = var.be_port
+  fe_port              = var.fe_port
+  tags                 = local.tags
 }
 
 module "ecs" {
@@ -95,10 +96,12 @@ module "ecs_be" {
   target_group_arns  = [module.alb.be_target_group_arn, module.alb.be_internal_target_group_arn]
   image              = var.be_image
   container_port     = var.be_port
+  readonly_root_filesystem = true
   execution_role_arn = module.iam.task_execution_role_arn
   task_role_arn      = module.iam.task_role_arns["be"]
   log_group_name     = module.cloudwatch.log_group_names["be"]
-  secrets            = var.be_secrets
+  environment_vars   = local.be_env
+  secrets            = local.be_secrets
   tags               = local.tags
 }
 
@@ -120,7 +123,8 @@ module "ecs_fe" {
   execution_role_arn = module.iam.task_execution_role_arn
   task_role_arn      = module.iam.task_role_arns["fe"]
   log_group_name     = module.cloudwatch.log_group_names["fe"]
-  secrets            = var.fe_secrets
+  environment_vars   = local.fe_env
+  secrets            = local.fe_secrets
   tags               = local.tags
 }
 
@@ -132,6 +136,7 @@ module "rds" {
   vpc_id                 = module.vpc.vpc_id
   db_subnet_ids          = module.vpc.db_subnet_ids
   app_security_group_ids = [module.ecs_be.task_sg_id, module.ecs_fe.task_sg_id]
+  snapshot_identifier    = var.rds_snapshot_identifier
   tags                   = local.tags
 }
 
@@ -145,13 +150,22 @@ module "waf" {
   tags              = local.tags
 }
 
-#module "cloudfront" {
-#  source              = "../../modules/cloudfront"
-#  project             = var.project
-#  environment         = var.environment
-#  aliases             = var.cloudfront_aliases
-#  origin_domain_name  = module.alb.external_dns_name
-#  acm_certificate_arn = var.cloudfront_certificate_arn
-#  web_acl_arn         = module.waf.web_acl_arn
-#  tags                = local.tags
-#}
+module "cloudfront" {
+  source                 = "../../modules/cloudfront"
+  project                = var.project
+  environment            = var.environment
+  aliases                = var.cloudfront_aliases        # [] for now = default *.cloudfront.net domain
+  origin_domain_name     = module.alb.external_dns_name
+  origin_protocol_policy = "http-only"                   # ALB is HTTP-only during testing; switch to https-only after ALB cert
+  acm_certificate_arn    = var.cloudfront_certificate_arn # "" for now = default CloudFront cert
+  web_acl_arn            = module.waf.web_acl_arn
+  tags                   = local.tags
+}
+
+output "cloudfront_domain" {
+  description = "Test URL: https://<this>"
+  value       = module.cloudfront.distribution_domain
+}
+output "alb_dns_name" {
+  value = module.alb.external_dns_name
+}

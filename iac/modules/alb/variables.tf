@@ -20,6 +20,7 @@ variable "certificate_arn" {
   default     = ""
 }
 
+
 variable "be_port" {
   type    = number
   default = 3001

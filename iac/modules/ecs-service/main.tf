@@ -45,12 +45,15 @@ resource "aws_ecs_task_definition" "this" {
   task_role_arn            = var.task_role_arn
 
   container_definitions = jsonencode([{
-    name      = var.component
-    image     = var.image
-    essential = true
+    name                   = var.component
+    image                  = var.image
+    essential              = true
+    readonlyRootFilesystem = var.readonly_root_filesystem
     portMappings = [{
       containerPort = var.container_port
+      hostPort      = var.container_port
       protocol      = "tcp"
+      name          = "${var.component}-${var.container_port}-tcp"
     }]
     environment = [for k, v in var.environment_vars : { name = k, value = v }]
     secrets     = [for k, v in var.secrets : { name = k, valueFrom = v }]
@@ -59,7 +62,7 @@ resource "aws_ecs_task_definition" "this" {
       options = {
         "awslogs-group"         = var.log_group_name
         "awslogs-region"        = var.region
-        "awslogs-stream-prefix" = var.component
+        "awslogs-stream-prefix" = "ecs"
       }
     }
   }])

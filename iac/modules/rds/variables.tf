@@ -19,6 +19,12 @@ variable "app_security_group_ids" {
   default     = []
 }
 
+variable "snapshot_identifier" {
+  description = "Restore from this snapshot id/ARN. Empty = fresh empty DB. When set, engine_version/db_name/username come from the snapshot."
+  type        = string
+  default     = ""
+}
+
 variable "engine_version" {
   type    = string
   default = "15.17"
@@ -46,12 +52,12 @@ variable "multi_az" {
 
 variable "db_name" {
   type    = string
-  default = "yecl_maintenance"
+  default = "yec_maintenance"
 }
 
 variable "username" {
   type    = string
-  default = "zyl_admin"
+  default = "yec_admin"
 }
 
 variable "backup_retention_period" {

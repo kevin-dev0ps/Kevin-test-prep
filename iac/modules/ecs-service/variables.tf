@@ -41,6 +41,11 @@ variable "execution_role_arn" { type = string }
 variable "task_role_arn"      { type = string }
 variable "log_group_name"     { type = string }
 
+variable "readonly_root_filesystem" {
+  type    = bool
+  default = false
+}
+
 variable "environment_vars" {
   description = "Plain (non-secret) env vars for the container"
   type        = map(string)
