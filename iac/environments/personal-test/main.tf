@@ -137,6 +137,8 @@ module "rds" {
   db_subnet_ids          = module.vpc.db_subnet_ids
   app_security_group_ids = [module.ecs_be.task_sg_id, module.ecs_fe.task_sg_id]
   tags                   = local.tags
+  #skip_final_snapshot = true           
+  deletion_protection = false           
 }
 
 # --- Edge (WAF + CloudFront). WAF + cert are us-east-1. ---

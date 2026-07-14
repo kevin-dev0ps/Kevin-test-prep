@@ -31,3 +31,8 @@ waf_allowed_countries      = []
 
 be_secrets = {}
 fe_secrets = {}
+
+# Bastion Configuration
+bastion_key_name      = "elevator-bastion-key"
+bastion_instance_type = "t3.micro"
+allowed_ssh_cidr      = ["171.225.184.236/32", "113.161.119.26/32"]

@@ -27,7 +27,7 @@ variable "be_port" {
 }
 variable "be_health_path" {
   type    = string
-  default = "/api/docs"
+  default = "/api"
 }
 variable "fe_port" {
   type    = number

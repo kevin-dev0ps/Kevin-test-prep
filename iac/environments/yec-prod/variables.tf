@@ -50,3 +50,23 @@ variable "fe_secrets" {
   type    = map(string)
   default = {}
 }
+
+# ===================================================================
+# Bastion Configuration
+# ===================================================================
+variable "bastion_instance_type" {
+  description = "EC2 instance type for bastion (t3.micro, t3.small, etc)"
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "bastion_key_name" {
+  description = "EC2 key pair name for SSH access to bastion"
+  type        = string
+}
+
+variable "allowed_ssh_cidr" {
+  description = "CIDR blocks allowed to SSH to bastion (list of IPs/ranges)"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}

@@ -67,7 +67,7 @@ variable "backup_retention_period" {
 
 variable "deletion_protection" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "kms_key_id" {

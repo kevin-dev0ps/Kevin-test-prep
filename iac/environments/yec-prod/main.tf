@@ -22,6 +22,83 @@ module "vpc" {
   tags                 = local.tags
 }
 
+# ===================================================================
+# Data source: Latest Amazon Linux 2 AMI
+# ===================================================================
+data "aws_ami" "amazon_linux_2" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
+  }
+
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+}
+
+# ===================================================================
+# Security Group: Bastion (SSH access)
+# ===================================================================
+resource "aws_security_group" "bastion" {
+  name        = "${var.project}-${var.environment}-bastion"
+  description = "Security group for bastion host (SSH jump host)"
+  vpc_id      = module.vpc.vpc_id
+
+  # Inbound SSH (restricted to specific IP or CIDR)
+  # Default: Allow SSH from anywhere (0.0.0.0/0)
+  # Change allowed_ssh_cidr in terraform.tfvars to restrict access
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_cidr
+    description = "SSH access to bastion"
+  }
+
+  # Outbound: All traffic allowed (for accessing RDS, internal services)
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "All outbound traffic"
+  }
+
+  tags = merge(
+    local.tags,
+    {
+      Name = "${var.project}-${var.environment}-bastion-sg"
+    }
+  )
+}
+
+# ===================================================================
+# Bastion EC2 Module
+# ===================================================================
+module "bastion" {
+  source            = "../../modules/bastion"
+  project           = var.project
+  environment       = var.environment
+  region            = var.region
+  ami_id            = data.aws_ami.amazon_linux_2.id
+  instance_type     = var.bastion_instance_type
+  subnet_id         = module.vpc.public_subnet_ids[0]
+  security_group_id = aws_security_group.bastion.id
+  key_name          = var.bastion_key_name
+  tags              = local.tags
+
+  depends_on = [module.vpc]
+}
+
 #module "ecr" {
 #  source      = "../../modules/ecr"
 #  project     = var.project
@@ -166,6 +243,17 @@ output "cloudfront_domain" {
   description = "Test URL: https://<this>"
   value       = module.cloudfront.distribution_domain
 }
+
 output "alb_dns_name" {
   value = module.alb.external_dns_name
+}
+
+output "bastion_public_ip" {
+  description = "Bastion public IP (for SSH access)"
+  value       = module.bastion.public_ip
+}
+
+output "bastion_instance_id" {
+  description = "Bastion instance ID"
+  value       = module.bastion.instance_id
 }
